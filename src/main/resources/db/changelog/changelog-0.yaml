@@ -1,0 +1,56 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-new-table
+      author: irene.lin@cdk.com
+      changes:
+        - createTable:
+            tableName: test_new_table
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+        - tagDatabase:
+            tag: v1.0
+  - changeSet:
+      id: insert-test-data
+      author: irene.lin@cdk.com
+      changes:
+        - insert:
+            tableName: test_new_table
+            columns:
+              - column:
+                  name: name
+                  value: 'Rollback Test'
+              - column:
+                  name: created_at
+                  valueComputed: now()
+        - tagDatabase:
+            tag: v2.0
+  - changeSet:
+      id: alter-column-name
+      author: irene.lin@cdk.com
+      changes:
+        - renameColumn:
+            tableName: test_new_table
+            oldColumnName: name
+            newColumnName: full_name
+        - tagDatabase:
+            tag: v3.0
+      rollback:
+        - renameColumn:
+            tableName: test_new_table
+            oldColumnName: full_name
+            newColumnName: name

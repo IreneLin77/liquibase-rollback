@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: digital-signing-setups-api
+  jackson:
+    mapper:
+      accept-case-insensitive-enums: true
+      accept-case-insensitive-values: true
+      accept-case-insensitive-properties: true
+  liquibase:
+    change-log: classpath:/db/changelog/changelog-master.yaml

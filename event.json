@@ -1,0 +1,6 @@
+{
+    "inputs": {
+        "rollback_tag": "v2.0",
+        "environment": "dev"
+    }
+}
