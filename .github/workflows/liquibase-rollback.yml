@@ -30,6 +30,7 @@ jobs:
           apt-get install -y jq curl
           curl -L https://github.com/mikefarah/yq/releases/download/v4.25.1/yq_linux_amd64 -o /usr/local/bin/yq
           chmod +x /usr/local/bin/yq
+
       - name: Read database connection details from YAML
         run: |
           if [[ "${{ github.event.inputs.environment }}" == "local" ]]; then
@@ -42,12 +43,10 @@ jobs:
             YAML_FILE="src/main/resources/application-default.yaml"
           fi
 
-          # 解析 liquibase 連線資訊
           DB_URL=$(yq e '.spring.liquibase.url' $YAML_FILE)
           DB_USER=$(yq e '.spring.liquibase.user' $YAML_FILE)
           DB_PASSWORD=$(yq e '.spring.liquibase.password' $YAML_FILE)
 
-          # 如果 DB_USER 為變數，則讀取 r2dbc 設定
           if [[ "$DB_USER" == "\${spring.r2dbc.username}" ]]; then
             DB_USER=$(yq e '.spring.r2dbc.username' $YAML_FILE)
           fi
@@ -65,11 +64,6 @@ jobs:
           distribution: 'temurin'
           java-version: 21
           cache: 'maven'
-          
-      - name: Debug GITHUB_EVENT_PATH
-        run: |
-          echo "GITHUB_EVENT_PATH content:"
-          cat $GITHUB_EVENT_PATH
           
       - name: Check rollback tag
         run: |

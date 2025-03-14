@@ -1,6 +1,1 @@
-{
-    "inputs": {
-        "rollback_tag": "v2.0",
-        "environment": "dev"
-    }
-}
+{"inputs": {"rollback_tag": "v2.0", "environment": "dev"}}
