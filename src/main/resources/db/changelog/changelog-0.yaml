@@ -33,7 +33,7 @@ databaseChangeLog:
             columns:
               - column:
                   name: name
-                  value: 'Rollback Test'
+                  value: "Rollback Test"
               - column:
                   name: created_at
                   valueComputed: now()

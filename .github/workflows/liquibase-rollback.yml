@@ -20,86 +20,83 @@ on:
 jobs:
   rollback:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install yq for YAML parsing
+      - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y jq curl
-          curl -L https://github.com/mikefarah/yq/releases/download/v4.25.1/yq_linux_amd64 -o /usr/local/bin/yq
-          chmod +x /usr/local/bin/yq
-
-      - name: Read database connection details from YAML
-        run: |
-          if [[ "${{ github.event.inputs.environment }}" == "local" ]]; then
-            YAML_FILE="src/main/resources/application-default.yaml"
-          elif [[ "${{ github.event.inputs.environment }}" == "dev" ]]; then
-            YAML_FILE="src/main/resources/application-dev.yaml"
-          elif [[ "${{ github.event.inputs.environment }}" == "stage" ]]; then
-            YAML_FILE="src/main/resources/application-stage.yaml"
-          else
-            YAML_FILE="src/main/resources/application-default.yaml"
-          fi
-
-          DB_URL=$(yq e '.spring.liquibase.url' $YAML_FILE)
-          DB_USER=$(yq e '.spring.liquibase.user' $YAML_FILE)
-          DB_PASSWORD=$(yq e '.spring.liquibase.password' $YAML_FILE)
-
-          if [[ "$DB_USER" == "\${spring.r2dbc.username}" ]]; then
-            DB_USER=$(yq e '.spring.r2dbc.username' $YAML_FILE)
-          fi
-          if [[ "$DB_PASSWORD" == "\${spring.r2dbc.password}" ]]; then
-            DB_PASSWORD=$(yq e '.spring.r2dbc.password' $YAML_FILE)
-          fi
-          
-          echo "DB_URL=$DB_URL" >> $GITHUB_ENV
-          echo "DB_USER=$DB_USER" >> $GITHUB_ENV
-          echo "DB_PASSWORD=$DB_PASSWORD" >> $GITHUB_ENV
-
-      - name: Setup Java
+          apt-get install -y maven jq curl
+          curl -L https://github.com/mikefarah/yq/releases/download/v4.25.1/yq_linux_amd64 -o yq
+          chmod +x yq
+          mv yq /usr/local/bin/
+          mvn -version
+  
+      - name: Set up JDK 21
         uses: actions/setup-java@v3
         with:
+          java-version: '21'
           distribution: 'temurin'
-          java-version: 21
-          cache: 'maven'
-          
-      - name: Check rollback tag
+          cache: maven
+      
+      - name: Set database parameters
         run: |
-          echo "Rollback tag is: ${{ github.event.inputs.rollback_tag }}"
+          # First check if DB_URL is available from act runner
+          if [ -n "$DB_URL" ] && [ -n "$DB_USER" ] && [ -n "$DB_PASSWORD" ]; then
+            echo "Using database parameters from environment variables"
+          else
+            # Fall back to YAML parsing
+            if [[ "${{ github.event.inputs.environment }}" == "local" ]]; then
+              YAML_FILE="src/main/resources/application-default.yaml"
+            elif [[ "${{ github.event.inputs.environment }}" == "dev" ]]; then
+              YAML_FILE="src/main/resources/application-dev.yaml"
+            elif [[ "${{ github.event.inputs.environment }}" == "stage" ]]; then
+              YAML_FILE="src/main/resources/application-stage.yaml"
+            else
+              YAML_FILE="src/main/resources/application-default.yaml"
+            fi
 
-      - name: Check if Maven is installed
-        run: |
-          echo "Checking Maven installation..."
-          which mvn || echo "Maven is NOT installed"
-          mvn -version || echo "Maven command failed"
+            DB_URL=$(yq e '.spring.liquibase.url' $YAML_FILE)
+            DB_USER=$(yq e '.spring.liquibase.user' $YAML_FILE)
+            DB_PASSWORD=$(yq e '.spring.liquibase.password' $YAML_FILE)
 
-      - name: Install wget
-        run: |
-          apt-get update
-          apt-get install -y wget
-
-      - name: Install Maven (if not found)
-        run: |
-          if ! command -v mvn &> /dev/null
-          then
-            echo "Installing Maven..."
-            MAVEN_VERSION=3.9.6
-            wget https://downloads.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz
-            tar -xvzf apache-maven-${MAVEN_VERSION}-bin.tar.gz -C /opt
-            ln -s /opt/apache-maven-${MAVEN_VERSION}/bin/mvn /usr/bin/mvn
+            if [[ "$DB_USER" == "\${spring.r2dbc.username}" ]]; then
+              DB_USER=$(yq e '.spring.r2dbc.username' $YAML_FILE)
+            fi
+            if [[ "$DB_PASSWORD" == "\${spring.r2dbc.password}" ]]; then
+              DB_PASSWORD=$(yq e '.spring.r2dbc.password' $YAML_FILE)
+            fi
+            
+            echo "DB_URL=$DB_URL" >> $GITHUB_ENV
+            echo "DB_USER=$DB_USER" >> $GITHUB_ENV
+            echo "DB_PASSWORD=$DB_PASSWORD" >> $GITHUB_ENV
           fi
 
-      - name: Ensure JAVA_HOME is set
+      - name: Ensure changelog files exist
         run: |
-          export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-          echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+          mkdir -p ./db/changelog
 
-      - name: Liquibase Rollback
+          cp src/main/resources/db/changelog/changelog-master.yaml ./changelog-master.yaml
+          cp src/main/resources/db/changelog/changelog-0.yaml ./db/changelog/
+
+      - name: Execute Liquibase rollback
         run: |
+          if [ "${{ github.event.inputs.environment }}" = "stage" ] && [ -n "${{ secrets.STAGE_DB_URL }}" ]; then
+            echo "Using credentials from secrets"
+            DB_URL="${{ secrets.STAGE_DB_URL }}"
+            DB_USER="${{ secrets.STAGE_DB_USERNAME }}"
+            DB_PASSWORD="${{ secrets.STAGE_DB_PASSWORD }}"
+          fi
+          
+          echo "Executing rollback to tag: ${{ github.event.inputs.rollback_tag }}"
+          
           mvn liquibase:rollback \
-              -Dliquibase.rollbackTag=${{ github.event.inputs.rollback_tag }} \
-              -Dliquibase.url=${{ env.DB_URL }} \
-              -Dliquibase.username=${{ env.DB_USER }} \
-              -Dliquibase.password=${{ env.DB_PASSWORD }}
+            -Dliquibase.url=$DB_URL \
+            -Dliquibase.username=$DB_USER \
+            -Dliquibase.password=$DB_PASSWORD \
+            -Dliquibase.rollbackTag=${{ github.event.inputs.rollback_tag }} \
+            -Dliquibase.changeLogFile=./changelog-master.yaml \
+            -Dliquibase.searchPath=.
