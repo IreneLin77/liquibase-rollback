@@ -1,4 +1,4 @@
-name: Liquibase Rollback
+name: Liquibase Rollback using Maven
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ on:
           - default
 
 jobs:
-  rollback:
+  maven_rollback:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment }}
 
@@ -45,42 +45,39 @@ jobs:
       - name: Set database parameters
         run: |
           # First check if DB_URL is available from act runner
-          if [ -n "$DB_URL" ] && [ -n "$DB_USER" ] && [ -n "$DB_PASSWORD" ]; then
-            echo "Using database parameters from environment variables"
-          else
-            # Fall back to YAML parsing
-            if [[ "${{ github.event.inputs.environment }}" == "local" ]]; then
-              YAML_FILE="src/main/resources/application-default.yaml"
-            elif [[ "${{ github.event.inputs.environment }}" == "dev" ]]; then
-              YAML_FILE="src/main/resources/application-dev.yaml"
-            elif [[ "${{ github.event.inputs.environment }}" == "stage" ]]; then
-              YAML_FILE="src/main/resources/application-stage.yaml"
-            else
-              YAML_FILE="src/main/resources/application-default.yaml"
-            fi
+          YAML_FILE=$(find . -name "application-*.yaml" | head -n 1)
+          echo "Using YAML file: $YAML_FILE"
 
-            DB_URL=$(yq e '.spring.liquibase.url' $YAML_FILE)
-            DB_USER=$(yq e '.spring.liquibase.user' $YAML_FILE)
-            DB_PASSWORD=$(yq e '.spring.liquibase.password' $YAML_FILE)
+          DB_URL=$(yq e '.spring.liquibase.url' $YAML_FILE)
+          DB_USER=$(yq e '.spring.liquibase.user' $YAML_FILE)
+          DB_PASSWORD=$(yq e '.spring.liquibase.password' $YAML_FILE)
 
-            if [[ "$DB_USER" == "\${spring.r2dbc.username}" ]]; then
-              DB_USER=$(yq e '.spring.r2dbc.username' $YAML_FILE)
-            fi
-            if [[ "$DB_PASSWORD" == "\${spring.r2dbc.password}" ]]; then
-              DB_PASSWORD=$(yq e '.spring.r2dbc.password' $YAML_FILE)
-            fi
-            
-            echo "DB_URL=$DB_URL" >> $GITHUB_ENV
-            echo "DB_USER=$DB_USER" >> $GITHUB_ENV
-            echo "DB_PASSWORD=$DB_PASSWORD" >> $GITHUB_ENV
+          if [[ "$DB_USER" == "\${spring.r2dbc.username}" ]]; then
+            DB_USER=$(yq e '.spring.r2dbc.username' $YAML_FILE)
           fi
+          if [[ "$DB_PASSWORD" == "\${spring.r2dbc.password}" ]]; then
+            DB_PASSWORD=$(yq e '.spring.r2dbc.password' $YAML_FILE)
+          fi
+          
+          echo "DB_URL=$DB_URL" >> $GITHUB_ENV
+          echo "DB_USER=$DB_USER" >> $GITHUB_ENV
+          echo "DB_PASSWORD=$DB_PASSWORD" >> $GITHUB_ENV
+
 
       - name: Ensure changelog files exist
         run: |
+          LIQUIBASE_SEARCH_PATH=$(find . -type d -path "*/db/changelog" | head -n 1)
+          if [ -z "$LIQUIBASE_SEARCH_PATH" ]; then
+            echo "Error: No db/changelog directory found!"
+            exit 1
+          fi
+
+          echo "Using LIQUIBASE_SEARCH_PATH=$LIQUIBASE_SEARCH_PATH"
+
           mkdir -p ./db/changelog
 
-          cp src/main/resources/db/changelog/changelog-master.yaml ./changelog-master.yaml
-          cp src/main/resources/db/changelog/changelog-0.yaml ./db/changelog/
+          cp $LIQUIBASE_SEARCH_PATH/changelog-master.yaml ./changelog-master.yaml
+          cp $LIQUIBASE_SEARCH_PATH/changelog-*.yaml ./db/changelog/ || echo "No additional changelog files found"
 
       - name: Execute Liquibase rollback
         run: |

@@ -29,7 +29,7 @@ echo "Using database URL: $DB_URL"
 echo "Using database user: $DB_USER"
 
 # Run act with explicit parameters for liquibase
-act --job rollback \
+act --job liquibase_cli_rollback \
   --eventpath event.json \
   --container-architecture linux/amd64 \
   -P ubuntu-latest=catthehacker/ubuntu:act-latest \
@@ -37,3 +37,5 @@ act --job rollback \
 
   #to update the database
   # mvn liquibase:update -Dliquibase.url=jdbc:postgresql://localhost:5432/testdb -Dliquibase.username=admin -Dliquibase.password=admin -Dliquibase.changeLogFile=src/main/resources/db/changelog/changelog-master.yaml -Dliquibase.driver=org.postgresql.Driver
+# to list the history of changes
+# mvn liquibase:history -Dliquibase.url=jdbc:postgresql://localhost:5432/testdb -Dliquibase.username=admin -Dliquibase.password=admin -Dliquibase.changeLogFile=src/main/resources/db/changelog/changelog-master.yaml -Dliquibase.driver=org.postgresql.Driver
